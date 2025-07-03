@@ -1,0 +1,637 @@
+EXPERIMENT -4
+
+import java.util.*;
+
+class distancevector {
+    static final int INF = 9999;
+
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+
+        System.out.print("Enter number of nodes: ");
+        int n = sc.nextInt();
+
+        int[][] cost = new int[n][n];
+        int[][] dist = new int[n][n];
+        int[][] via = new int[n][n];
+
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                cost[i][j] = sc.nextInt();
+                dist[i][j] = cost[i][j];
+                via[i][j] = ((i == j || cost[i][j] == INF) ? -1 : j);
+            }
+        }
+
+        for (int k = 0; k < n; k++) {
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < n; j++) {
+                    if (dist[i][k] + dist[k][j] < dist[i][j]) {
+                        dist[i][j] = dist[i][k] + dist[j][k];
+                        via[i][j] = via[i][k];
+                    }
+                }
+            }
+        }
+        for (int i = 0; i < n; i++) {
+            System.out.println("\nRouting Table for Node " + i + ":");
+            System.out.println("Destination\tNext Hop\tCost");
+            for (int j = 0; j < n; j++) {
+                if (i != j)
+                    System.out.println(j + "\t\t" + via[i][j] + "\t\t" + dist[i][j]);
+            }
+        }
+
+    }
+}
+
+--------------------------------------------------------------------------------------------------
+
+EXPERIMENT-5
+(5A)
+**Server.java**
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.*;
+
+
+public class Server {
+    public static void main(String[] args) throws Exception {
+        int port = 3000;
+        ServerSocket serversocket = new ServerSocket(port);
+        System.out.println("Server started on port " + port);
+
+        Socket socket = serversocket.accept();
+        System.out.println("Client connected!");
+
+        BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+        PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+
+        String message;
+        while ((message = in.readLine()) != null) {
+            System.out.println("Received");
+            String rev = new StringBuilder(message).reverse().toString();
+            out.println(rev);
+        }
+        socket.close();
+        serversocket.close();
+    }
+}
+
+Client.java
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.*;
+
+class client {
+    public static void main(String[] args) throws Exception {
+        int port = 3000;
+        String ip = "192.168.0.109";
+        Socket socket = new Socket(ip, port);
+        System.out.println("Connected to server!");
+        BufferedReader keyboard = new BufferedReader(new InputStreamReader(System.in));
+
+        PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+        BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+        String text;
+        while (true) {
+            System.out.print("Enter text (type 'exit' to quit): ");
+            text = keyboard.readLine();
+            if (text.equalsIgnoreCase("exit"))
+                break;
+            out.println(text);
+            String s = in.readLine();
+            System.out.println("Reversed: " + s);
+
+        }
+        socket.close();
+    }
+}
+-------------------------------------------------------------------------------------------------
+EXP_(5B)
+
+// File Client (FileClient.java)
+import java.net.*;
+import java.io.*;
+
+public class FileClient {
+    public static void main(String[] args) throws IOException {
+        // Create a dummy file to send
+        new PrintWriter("file_to_send.txt").append("This is a test file.").close();
+        
+        Socket socket = new Socket("127.0.0.1", 65432);
+        File file = new File("file_to_send.txt");
+        FileInputStream fIn = new FileInputStream(file);
+        OutputStream out = socket.getOutputStream();
+
+        byte[] buffer = new byte[4096];
+        int bytesRead;
+        while ((bytesRead = fIn.read(buffer)) != -1) {
+            out.write(buffer, 0, bytesRead);
+        }
+
+        System.out.println("File sent successfully.");
+        fIn.close();
+        socket.close();
+    }
+}
+
+// File Server (FileServer.java)
+import java.net.*;
+import java.io.*;
+
+public class FileServer {
+    public static void main(String[] args) throws IOException {
+        ServerSocket serverSocket = new ServerSocket(65432);
+        System.out.println("Server waiting for file...");
+        Socket client = serverSocket.accept();
+
+        InputStream in = client.getInputStream();
+        FileOutputStream fOut = new FileOutputStream("received_file.txt");
+
+        byte[] buffer = new byte[4096];
+        int bytesRead;
+        while ((bytesRead = in.read(buffer)) != -1) {
+            fOut.write(buffer, 0, bytesRead);
+        }
+
+        System.out.println("File received successfully.");
+        fOut.close();
+        serverSocket.close();
+    }
+}
+--------------------------------------------------------------------------------------------------
+EXP-5C
+//UpperCaseServer.java
+
+import java.io.*;
+import java.net.*;
+import java.nio.ByteBuffer;
+import java.nio.channels.*;
+import java.util.*;
+
+public class UpperCaseServer {
+    public static void main(String[] args) throws IOException {
+        ServerSocketChannel server = ServerSocketChannel.open();
+        server.bind(new InetSocketAddress(8080));
+        server.configureBlocking(false);
+        Selector selector = Selector.open();
+        server.register(selector, SelectionKey.OP_ACCEPT);
+
+        System.out.println("Server started on port 8080...");
+        while (true) {
+            selector.select();
+            Iterator<SelectionKey> keys = selector.selectedKeys().iterator();
+            while (keys.hasNext()) {
+                SelectionKey key = keys.next();
+                keys.remove();
+                if (key.isAcceptable()) {
+                    SocketChannel client = server.accept();
+                    client.configureBlocking(false);
+                    client.register(selector, SelectionKey.OP_READ);
+                    System.out.println("New client connected.");
+                } else if (key.isReadable()) {
+                    SocketChannel client = (SocketChannel) key.channel();
+                    ByteBuffer buffer = ByteBuffer.allocate(1024);
+                    client.read(buffer);
+                    String msg = new String(buffer.array()).trim();
+                    String upperMsg = msg.toUpperCase();
+                    client.write(ByteBuffer.wrap(upperMsg.getBytes()));
+                }
+            }
+        }
+    }
+}
+
+//UpperCaseClient.java
+
+import java.io.*;
+import java.net.*;
+import java.util.Scanner;
+
+public class UpperCaseClient {
+    public static void main(String[] args) throws IOException {
+        Socket socket = new Socket("localhost", 8080);
+        Scanner sc = new Scanner(System.in);
+        System.out.print("Enter text: ");
+        String msg = sc.nextLine();
+        PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+        out.println(msg);
+        BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+        System.out.println("Server response: " + in.readLine());
+        socket.close();
+    }
+}
+-------------------------------------------------------------------------------------------------------
+EXP-5D
+//EchoClient.java
+
+import java.io.*;
+import java.net.*;
+import java.util.Scanner;
+
+public class EchoClient {
+    public static void main(String[] args) throws IOException {
+        Socket socket = new Socket("localhost", 8080);
+        Scanner sc = new Scanner(System.in);
+        PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+        BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+        System.out.print("Enter message: ");
+        String msg = sc.nextLine();
+        out.println(msg);
+        System.out.println(in.readLine());
+        socket.close();
+    }
+}
+
+//EchoServer.java
+
+import java.io.*;
+import java.net.*;
+import java.util.*;
+
+public class EchoServer {
+    public static void main(String[] args) throws IOException {
+        ServerSocket serverSocket = new ServerSocket(8080);
+        List<Socket> clients = new ArrayList<>();
+        System.out.println("Server started on port 8080...");
+        while (true) {
+            Socket client = serverSocket.accept();
+            clients.add(client);
+            new Thread(() -> {
+                try {
+                    BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
+                    PrintWriter out = new PrintWriter(client.getOutputStream(), true);
+                    String msg;
+                    while ((msg = in.readLine()) != null) {
+                        System.out.println("Received: " + msg);
+                        out.println("Echo: " + msg);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }).start();
+        }
+    }
+}
+
+---------------------------------------------------------------------------------------------------
+EXPERIMENT -6(a)
+
+// UDP Reverse Client (UDPClient.java)
+import java.net.*;
+import java.io.*;
+
+public class UDPClient {
+    public static void main(String[] args) throws Exception {
+        DatagramSocket clientSocket = new DatagramSocket();
+        InetAddress ip = InetAddress.getByName("127.0.0.1");
+
+        System.out.print("Enter sentence: ");
+        String sentence = new BufferedReader(new InputStreamReader(System.in)).readLine();
+        byte[] sendData = sentence.getBytes();
+
+        DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, ip, 9876);
+        clientSocket.send(sendPacket); // Send to server
+
+        byte[] receiveData = new byte[1024];
+        DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
+        clientSocket.receive(receivePacket); // Wait for response
+
+        String response = new String(receivePacket.getData(), 0, receivePacket.getLength());
+        System.out.println("FROM SERVER: " + response);
+        clientSocket.close();
+    }
+}
+
+// UDP Reverse Server (UDPServer.java)
+import java.net.*;
+
+public class UDPServer {
+    public static void main(String[] args) throws Exception {
+        DatagramSocket serverSocket = new DatagramSocket(9876);
+        System.out.println("UDP Server is running...");
+        byte[] receiveData = new byte[1024];
+
+        while (true) {
+            DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
+            serverSocket.receive(receivePacket); // Wait for a packet
+
+            String sentence = new String(receivePacket.getData(), 0, receivePacket.getLength());
+            String reversed = new StringBuilder(sentence).reverse().toString();
+
+            InetAddress ip = receivePacket.getAddress();
+            int port = receivePacket.getPort();
+            byte[] sendData = reversed.getBytes();
+
+            DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, ip, port);
+            serverSocket.send(sendPacket); // Send response back
+        }
+    }
+}
+-------------------------------------------------------------------------------------------------------
+EXP-6B
+
+// UDP File Client (UDPFileClient.java)
+import java.net.*;
+import java.io.*;
+
+public class UDPFileClient {
+    public static void main(String[] args) throws Exception {
+        // Create a dummy file to send
+        new PrintWriter("file_to_send_udp.txt").append("UDP File Transfer Test").close();
+
+        DatagramSocket clientSocket = new DatagramSocket();
+        InetAddress ip = InetAddress.getByName("127.0.0.1");
+        FileInputStream fIn = new FileInputStream("file_to_send_udp.txt");
+        byte[] buffer = new byte[1024];
+        
+        System.out.println("Sending file...");
+        int bytesRead;
+        while ((bytesRead = fIn.read(buffer)) != -1) {
+            DatagramPacket sendPacket = new DatagramPacket(buffer, bytesRead, ip, 9876);
+            clientSocket.send(sendPacket);
+        }
+
+        // Send End of File signal
+        byte[] eof = "EOF".getBytes();
+        DatagramPacket eofPacket = new DatagramPacket(eof, eof.length, ip, 9876);
+        clientSocket.send(eofPacket);
+
+        System.out.println("File sent.");
+        fIn.close();
+        clientSocket.close();
+    }
+}
+
+// UDP File Server (UDPFileServer.java)
+import java.net.*;
+import java.io.*;
+
+public class UDPFileServer {
+    public static void main(String[] args) throws Exception {
+        DatagramSocket serverSocket = new DatagramSocket(9876);
+        FileOutputStream fOut = new FileOutputStream("received_via_udp.txt");
+        System.out.println("UDP File Server is waiting...");
+        byte[] buffer = new byte[1024];
+
+        while (true) {
+            DatagramPacket receivePacket = new DatagramPacket(buffer, buffer.length);
+            serverSocket.receive(receivePacket);
+            String received = new String(receivePacket.getData(), 0, receivePacket.getLength());
+
+            if (received.equals("EOF")) { // Check for End of File signal
+                System.out.println("File transfer complete.");
+                break;
+            }
+            fOut.write(receivePacket.getData(), 0, receivePacket.getLength());
+        }
+        fOut.close();
+        serverSocket.close();
+    }
+}
+-----------------------------------------------------------------------------------------------
+EXPERIMENT-7
+
+//AdvancedSocketClient.java
+import java.net.*;
+import java.io.*;
+
+public class AdvancedSocketClient {
+    public static void main(String[] args) throws IOException {
+        Socket socket = new Socket("localhost", 8080);
+        System.out.println("Connected to server.");
+
+        // Get socket options (getsockopt)
+        System.out.println("\n[Client] Socket Options:");
+        System.out.println("TCP No Delay: " + socket.getTcpNoDelay());
+
+        // Set socket options (setsockopt)
+        socket.setSendBufferSize(8192); // Increase send buffer
+        System.out.println("Set Send Buffer: 8192 bytes");
+
+        // Get local and remote addresses (getsockname/getpeername)
+        System.out.println("\n[Client] Address Info:");
+        System.out.println("Local (getsockname): " + socket.getLocalSocketAddress());
+        System.out.println("Remote (getpeername): " + socket.getRemoteSocketAddress());
+
+        // Send data to server (simulate writev)
+        PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+        out.println("Hello from Client!");
+
+        // Read data from server (simulate readv)
+        BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+        System.out.println("\n[Client] Received: " + in.readLine());
+
+        socket.close();
+    }
+}
+
+//AdvancedSocketServer.java
+import java.net.*;
+import java.io.*;
+
+public class AdvancedSocketServer {
+    public static void main(String[] args) throws IOException {
+        ServerSocket server = new ServerSocket(8080);
+        System.out.println("Server started. Waiting for client...");
+
+        Socket client = server.accept();
+        System.out.println("Client connected.");
+
+        // Get socket options (getsockopt)
+        System.out.println("\n[Server] Socket Options:");
+        System.out.println("Receive Buffer Size: " + client.getReceiveBufferSize());
+        System.out.println("Send Buffer Size: " + client.getSendBufferSize());
+
+        // Set socket options (setsockopt)
+        client.setSoTimeout(3000); // Timeout after 3 seconds
+        System.out.println("Set timeout: 3000ms");
+
+        // Get local and remote addresses (getsockname/getpeername)
+        System.out.println("\n[Server] Address Info:");
+        System.out.println("Local (getsockname): " + client.getLocalSocketAddress());
+        System.out.println("Remote (getpeername): " + client.getRemoteSocketAddress());
+
+        // Read data from client (simulate readv)
+        BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
+        System.out.println("\n[Server] Received: " + in.readLine());
+
+        // Send data to client (simulate writev)
+        PrintWriter out = new PrintWriter(client.getOutputStream(), true);
+        out.println("Hello from Server!");
+
+        client.close();
+        server.close();
+    }
+}
+-------------------------------------------------------------------------------------------------
+EXPERIMENT-8
+
+//ChatServer.java
+import java.io.*;
+import java.net.*;
+import java.util.*;
+
+public class ChatServer {
+    static List<PrintWriter> clientWriters = new ArrayList<>();
+
+    public static void main(String[] args) throws Exception {
+        ServerSocket serverSocket = new ServerSocket(9999);
+        System.out.println("Server started on port 9999");
+
+        while (true) {
+            Socket client = serverSocket.accept();
+            System.out.println("New client connected.");
+            new ClientHandler(client).start();
+        }
+    }
+
+    static class ClientHandler extends Thread {
+        Socket socket;
+        PrintWriter out;
+        BufferedReader in;
+
+        ClientHandler(Socket socket) throws IOException {
+            this.socket = socket;
+            out = new PrintWriter(socket.getOutputStream(), true);
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            clientWriters.add(out);
+        }
+
+        public void run() {
+            try {
+                out.println("Welcome to the Chat! Enter your name:");
+                String name = in.readLine();
+                broadcast(name + " joined the chat");
+
+                String msg;
+                while ((msg = in.readLine()) != null) {
+                    broadcast(name + ": " + msg);
+                }
+            } catch (IOException e) {
+                System.out.println("Client error.");
+            } finally {
+                try {
+                    socket.close();
+                } catch (IOException e) {}
+                clientWriters.remove(out);
+            }
+        }
+
+        void broadcast(String message) {
+            for (PrintWriter writer : clientWriters) {
+                writer.println(message);
+            }
+        }
+    }
+}
+
+//ChatClient.java
+import java.io.*;
+import java.net.*;
+
+public class ChatClient {
+    public static void main(String[] args) throws Exception {
+        Socket socket = new Socket("localhost", 9999);
+        System.out.println("Connected to chat server.");
+
+        new ReadThread(socket).start();
+        new WriteThread(socket).start();
+    }
+}
+
+class ReadThread extends Thread {
+    BufferedReader reader;
+
+    ReadThread(Socket socket) throws IOException {
+        reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+    }
+
+    public void run() {
+        String msg;
+        try {
+            while ((msg = reader.readLine()) != null) {
+                System.out.println(msg);
+            }
+        } catch (IOException e) {
+            System.out.println("Disconnected from server.");
+        }
+    }
+}
+
+class WriteThread extends Thread {
+    PrintWriter writer;
+    BufferedReader console;
+
+    WriteThread(Socket socket) throws IOException {
+        writer = new PrintWriter(socket.getOutputStream(), true);
+        console = new BufferedReader(new InputStreamReader(System.in));
+    }
+
+    public void run() {
+        try {
+            String input;
+            while ((input = console.readLine()) != null) {
+                writer.println(input);
+            }
+        } catch (IOException e) {
+            System.out.println("Error writing to server.");
+        }
+    }
+}
+----------------------------------------------------------------------------------------------------
+EXPERIMENT-9
+
+import java.net.*;
+
+public class DNS {
+    public static void main(String[] args) {
+        try {
+            String domain = "google.com";
+            InetAddress inet = InetAddress.getByName(domain);
+
+            System.out.println("Domain Name: " + domain);
+            System.out.println("IP Address : " + inet.getHostAddress());
+
+        } catch (Exception e) {
+            System.out.println("Domain not found: " + e.getMessage());
+        }
+    }
+}
+
+------------------------------------------------------------------------------------------------
+EXPERIMENT-10
+
+import java.net.*;
+
+class PING {
+    public static void main(String[] args) {
+        String host = "google.com";
+        int timeout = 3000;
+        try {
+            InetAddress inet = InetAddress.getByName(host);
+            System.out.println("Host address" + inet.getHostAddress());
+
+            for (int i = 1; i <= 4; i++) {
+                long start = System.currentTimeMillis();
+                boolean isreachable = inet.isReachable(timeout);
+                long end = System.currentTimeMillis();
+                if (isreachable) {
+                    System.out.println("Reachable");
+                    System.out.println("Reply from " + inet.getHostAddress() + ": time=" + (end - start) + "ms");
+
+                } else {
+                    System.out.println("not reachable");
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("Error" + e.getMessage());
+        }
+
+    }
+}
+--------------------------------------------------------------------------------------------------
