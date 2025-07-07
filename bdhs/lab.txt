@@ -128,53 +128,73 @@ hdfs dfs -ls /user/hadoop/destination # Check copied file
 
 
 import java.io.IOException;
-import org.apache.hadoop.conf.*;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.*;
-import org.apache.hadoop.mapreduce.*;
 
-public class DeptSalary {
-    // Mapper
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+public class EmployeeSalary {
+
+    // Mapper Class
     public static class SalaryMapper extends Mapper<LongWritable, Text, Text, IntWritable> {
-        public void map(LongWritable key, Text value, Context context) 
-            throws IOException, InterruptedException {
-            String[] parts = value.toString().split("\\s+");
-            if(parts.length == 3) {
-                context.write(new Text(parts[1]), new IntWritable(Integer.parseInt(parts[2])));
+        private Text department = new Text();
+        private IntWritable salary = new IntWritable();
+
+        @Override
+        protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+            String line = value.toString();
+            String[] fields = line.split("\\s+");
+            if (fields.length == 3) {
+                department.set(fields[1]);
+                salary.set(Integer.parseInt(fields[2]));
+                context.write(department, salary);
             }
         }
     }
 
-    // Reducer
+    // Reducer Class
     public static class SalaryReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
-        public void reduce(Text key, Iterable<IntWritable> values, Context context) 
-            throws IOException, InterruptedException {
+        @Override
+        protected void reduce(Text key, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
             int sum = 0;
-            for(IntWritable val : values) {
+            for (IntWritable val : values) {
                 sum += val.get();
             }
             context.write(key, new IntWritable(sum));
         }
     }
 
-    // Driver
+    // Driver Class
     public static void main(String[] args) throws Exception {
+        if (args.length != 2) {
+            System.err.println("Usage: EmployeeSalary <input path> <output path>");
+            System.exit(-1);
+        }
+
         Configuration conf = new Configuration();
-        Job job = Job.getInstance(conf, "Dept Salary Sum");
-        
-        job.setJarByClass(DeptSalary.class);
+        Job job = Job.getInstance(conf, "Employee Salary Sum");
+
+        job.setJarByClass(EmployeeSalary.class);
         job.setMapperClass(SalaryMapper.class);
         job.setReducerClass(SalaryReducer.class);
-        
+
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(IntWritable.class);
-        
+
         FileInputFormat.addInputPath(job, new Path(args[0]));
         FileOutputFormat.setOutputPath(job, new Path(args[1]));
-        
+
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
 }
+
 
 1. prepare input file
 
@@ -219,52 +239,59 @@ hadoop jar maxtemp.jar MaxTemp /user/cloudera/weather_input /user/cloudera/weath
 1952    33
 
 
-
 import java.io.IOException;
-import org.apache.hadoop.conf.*;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.*;
-import org.apache.hadoop.mapreduce.*;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
-public class MaxTemp {
-    // Mapper
-    public static class TempMapper extends Mapper<Object, Text, Text, IntWritable> {
-        public void map(Object key, Text value, Context context) 
-            throws IOException, InterruptedException {
-            String[] parts = value.toString().split("\\s+");
-            if(parts.length == 2) {
-                context.write(new Text(parts[0]), new IntWritable(Integer.parseInt(parts[1])));
+public class MaxTemperature {
+
+    // Mapper Class
+    public static class MaxTempMapper extends Mapper<Object, Text, Text, IntWritable> {
+        private Text year = new Text();
+        private IntWritable temperature = new IntWritable();
+
+        public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
+            String[] fields = value.toString().split("\\s+");
+            if (fields.length == 2) {
+                year.set(fields[0]); // Extract year
+                temperature.set(Integer.parseInt(fields[1])); // Extract temperature
+                context.write(year, temperature);
             }
         }
     }
 
-    // Reducer
-    public static class TempReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
-        public void reduce(Text key, Iterable<IntWritable> values, Context context) 
-            throws IOException, InterruptedException {
-            int max = Integer.MIN_VALUE;
-            for(IntWritable val : values) {
-                max = Math.max(max, val.get());
+    // Reducer Class
+    public static class MaxTempReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
+        public void reduce(Text key, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
+            int maxTemp = Integer.MIN_VALUE;
+            for (IntWritable val : values) {
+                maxTemp = Math.max(maxTemp, val.get());
             }
-            context.write(key, new IntWritable(max));
+            context.write(key, new IntWritable(maxTemp));
         }
     }
 
-    // Driver
+    // Driver Program
     public static void main(String[] args) throws Exception {
         Configuration conf = new Configuration();
-        Job job = Job.getInstance(conf, "Max Temp");
-        
-        job.setJarByClass(MaxTemp.class);
-        job.setMapperClass(TempMapper.class);
-        job.setReducerClass(TempReducer.class);
-        
+        Job job = Job.getInstance(conf, "Max Temperature");
+        job.setJarByClass(MaxTemperature.class);
+        job.setMapperClass(MaxTempMapper.class);
+        job.setReducerClass(MaxTempReducer.class);
+
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(IntWritable.class);
-        
+
         FileInputFormat.addInputPath(job, new Path(args[0]));
         FileOutputFormat.setOutputPath(job, new Path(args[1]));
-        
+
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
 }
@@ -295,60 +322,66 @@ Hadoop  1
 Hello   2
 World   2
 
-
 import java.io.IOException;
-import java.util.*;
-import org.apache.hadoop.conf.*;
+import java.util.StringTokenizer;
+
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.*;
-import org.apache.hadoop.mapreduce.*;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
 public class WordCount {
-    
-    // Mapper
-    public static class WCMapper extends Mapper<Object, Text, Text, IntWritable> {
-        private final static IntWritable one = new IntWritable(1);
-        private Text word = new Text();
-        
-        public void map(Object key, Text value, Context context) 
-            throws IOException, InterruptedException {
-            StringTokenizer tokens = new StringTokenizer(value.toString());
-            while(tokens.hasMoreTokens()) {
-                word.set(tokens.nextToken());
-                context.write(word, one);
-            }
-        }
+
+  public static class TokenizerMapper
+       extends Mapper<Object, Text, Text, IntWritable>{
+
+    private final static IntWritable one = new IntWritable(1);
+    private Text word = new Text();
+
+    public void map(Object key, Text value, Context context
+                    ) throws IOException, InterruptedException {
+      StringTokenizer itr = new StringTokenizer(value.toString());
+      while (itr.hasMoreTokens()) {
+        word.set(itr.nextToken());
+        context.write(word, one);
+      }
     }
-    
-    // Reducer
-    public static class WCReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
-        public void reduce(Text key, Iterable<IntWritable> values, Context context) 
-            throws IOException, InterruptedException {
-            int sum = 0;
-            for(IntWritable val : values) {
-                sum += val.get();
-            }
-            context.write(key, new IntWritable(sum));
-        }
+  }
+
+  public static class IntSumReducer
+       extends Reducer<Text,IntWritable,Text,IntWritable> {
+    private IntWritable result = new IntWritable();
+
+    public void reduce(Text key, Iterable<IntWritable> values,
+                       Context context
+                       ) throws IOException, InterruptedException {
+      int sum = 0;
+      for (IntWritable val : values) {
+        sum += val.get();
+      }
+      result.set(sum);
+      context.write(key, result);
     }
-    
-    // Driver
-    public static void main(String[] args) throws Exception {
-        Configuration conf = new Configuration();
-        Job job = Job.getInstance(conf, "WordCount");
-        
-        job.setJarByClass(WordCount.class);
-        job.setMapperClass(WCMapper.class);
-        job.setReducerClass(WCReducer.class);
-        
-        job.setOutputKeyClass(Text.class);
-        job.setOutputValueClass(IntWritable.class);
-        
-        FileInputFormat.addInputPath(job, new Path(args[0]));
-        FileOutputFormat.setOutputPath(job, new Path(args[1]));
-        
-        System.exit(job.waitForCompletion(true) ? 0 : 1);
-    }
+  }
+
+  public static void main(String[] args) throws Exception {
+    Configuration conf = new Configuration();
+    Job job = Job.getInstance(conf, "word count");
+    job.setJarByClass(WordCount.class);
+    job.setMapperClass(TokenizerMapper.class);
+    job.setCombinerClass(IntSumReducer.class);
+    job.setReducerClass(IntSumReducer.class);
+    job.setOutputKeyClass(Text.class);
+    job.setOutputValueClass(IntWritable.class);
+    FileInputFormat.addInputPath(job, new Path(args[0]));
+    FileOutputFormat.setOutputPath(job, new Path(args[1]));
+    System.exit(job.waitForCompletion(true) ? 0 : 1);
+  }
 }
 
 
