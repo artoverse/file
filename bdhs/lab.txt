@@ -1,0 +1,1187 @@
+1st
+
+import java.io.*;
+import org.apache.hadoop.conf.*;
+import org.apache.hadoop.fs.*;
+
+public class SimpleHDFSOps {
+    public static void main(String[] args) throws IOException {
+        // 1. Setup HDFS connection
+        Configuration conf = new Configuration();
+        conf.set("fs.defaultFS", "hdfs://localhost:9000");
+        FileSystem hdfs = FileSystem.get(conf);
+        
+        // 2. Define file paths
+        String localFile = "/home/user/sample.txt";
+        String hdfsFile = "/user/hadoop/sample.txt";
+        
+        // 3. Copy local file to HDFS (WRITE)
+        hdfs.copyFromLocalFile(new Path(localFile), new Path(hdfsFile));
+        System.out.println("File copied to HDFS!");
+        
+        // 4. Read file from HDFS (READ)
+        InputStream in = hdfs.open(new Path(hdfsFile));
+        BufferedReader reader = new BufferedReader(new InputStreamReader(in));
+        
+        String line;
+        System.out.println("\nFile content:");
+        while((line = reader.readLine()) != null) {
+            System.out.println(line);
+        }
+        
+        // 5. Cleanup
+        reader.close();
+        hdfs.close();
+    }
+}
+
+javac -classpath $(hadoop classpath) HDFSFileOperations.javaj
+
+echo "This is a test file for HDFS operations" > /home/cloudera/sample.txt
+
+java -classpath $(hadoop classpath):. HDFSFileOperations
+
+hdfs dfs -ls /user/hadoop/
+hdfs dfs -cat /user/hadoop/sample.txt
+
+
+
+------------------------------------------------------------
+
+2nd
+
+import java.io.IOException;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.*;
+
+public class SimpleHDFSDirs {
+    public static void main(String[] args) throws IOException {
+        // 1. Connect to HDFS
+        Configuration conf = new Configuration();
+        conf.set("fs.defaultFS", "hdfs://localhost:9000");
+        FileSystem hdfs = FileSystem.get(conf);
+        
+        // 2. Directory paths
+        String sourceDir = "/user/hadoop/source";
+        String destDir = "/user/hadoop/destination";
+        
+        // 3. Create directories (if they don't exist)
+        mkdir(hdfs, sourceDir);
+        mkdir(hdfs, destDir);
+        
+        // 4. File paths
+        String sourceFile = sourceDir + "/sample.txt";
+        String destFile = destDir + "/sample.txt";
+        
+        // 5. Copy file between directories
+        copy(hdfs, sourceFile, destFile);
+        
+        // 6. Cleanup
+        hdfs.close();
+    }
+    
+    // Helper method to create directory
+    public static void mkdir(FileSystem hdfs, String path) throws IOException {
+        Path p = new Path(path);
+        if (!hdfs.exists(p)) {
+            hdfs.mkdirs(p);
+            System.out.println("Created: " + path);
+        } else {
+            System.out.println("Exists: " + path);
+        }
+    }
+    
+    // Helper method to copy files
+    public static void copy(FileSystem hdfs, String src, String dest) throws IOException {
+        Path srcPath = new Path(src);
+        Path destPath = new Path(dest);
+        
+        if (hdfs.exists(srcPath)) {
+            FileUtil.copy(hdfs, srcPath, hdfs, destPath, false, hdfs.getConf());
+            System.out.println("Copied: " + src + " → " + dest);
+        } else {
+            System.out.println("Missing: " + src);
+        }
+    }
+}
+
+gedit SimpleHDFSDirs.java
+
+javac -classpath $(hadoop classpath) SimpleHDFSDirs.java
+
+# Create local test file
+echo "Test content" > sample.txt
+
+# Upload to HDFS (for testing)
+hdfs dfs -mkdir -p /user/hadoop/source
+hdfs dfs -put sample.txt /user/hadoop/source/
+
+java -classpath $(hadoop classpath):. SimpleHDFSDirs
+
+hdfs dfs -ls /user/hadoop/source      # Check source
+hdfs dfs -ls /user/hadoop/destination # Check copied file
+
+--------------------------------------------------
+
+3rd
+
+
+
+import java.io.IOException;
+import org.apache.hadoop.conf.*;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.*;
+import org.apache.hadoop.mapreduce.*;
+
+public class DeptSalary {
+    // Mapper
+    public static class SalaryMapper extends Mapper<LongWritable, Text, Text, IntWritable> {
+        public void map(LongWritable key, Text value, Context context) 
+            throws IOException, InterruptedException {
+            String[] parts = value.toString().split("\\s+");
+            if(parts.length == 3) {
+                context.write(new Text(parts[1]), new IntWritable(Integer.parseInt(parts[2])));
+            }
+        }
+    }
+
+    // Reducer
+    public static class SalaryReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
+        public void reduce(Text key, Iterable<IntWritable> values, Context context) 
+            throws IOException, InterruptedException {
+            int sum = 0;
+            for(IntWritable val : values) {
+                sum += val.get();
+            }
+            context.write(key, new IntWritable(sum));
+        }
+    }
+
+    // Driver
+    public static void main(String[] args) throws Exception {
+        Configuration conf = new Configuration();
+        Job job = Job.getInstance(conf, "Dept Salary Sum");
+        
+        job.setJarByClass(DeptSalary.class);
+        job.setMapperClass(SalaryMapper.class);
+        job.setReducerClass(SalaryReducer.class);
+        
+        job.setOutputKeyClass(Text.class);
+        job.setOutputValueClass(IntWritable.class);
+        
+        FileInputFormat.addInputPath(job, new Path(args[0]));
+        FileOutputFormat.setOutputPath(job, new Path(args[1]));
+        
+        System.exit(job.waitForCompletion(true) ? 0 : 1);
+    }
+}
+
+1. prepare input file
+
+echo -e "emp1 dept1 5000\nemp2 dept1 6000\nemp3 dept2 4500\nemp4 dept2 5500\nemp5 dept3 7000" > employee.txt
+hdfs dfs -mkdir -p /user/cloudera/salary_input
+hdfs dfs -put employee.txt /user/cloudera/salary_input/
+
+# Compile
+javac -classpath $(hadoop classpath) DeptSalary.java
+
+# Create jar
+jar -cvf deptsalary.jar DeptSalary*.class
+
+hadoop jar deptsalary.jar DeptSalary /user/cloudera/salary_input /user/cloudera/salary_output
+
+hdfs dfs -cat /user/cloudera/salary_output/part-r-00000
+
+expected out : 
+dept1    11000
+dept2    10000
+dept3    7000
+
+
+--------------------------------------------------------
+
+4th
+
+echo -e "1950 30\n1950 32\n1951 25\n1951 28\n1951 35\n1952 31\n1952 29\n1952 33" > weather.txt
+hdfs dfs -mkdir -p /user/cloudera/weather_input
+hdfs dfs -put weather.txt /user/cloudera/weather_input/
+
+# Compile
+javac -classpath $(hadoop classpath) MaxTemp.java
+
+# Create jar
+jar -cvf maxtemp.jar MaxTemp*.class
+
+hadoop jar maxtemp.jar MaxTemp /user/cloudera/weather_input /user/cloudera/weather_output
+
+1950    32
+1951    35
+1952    33
+
+
+
+import java.io.IOException;
+import org.apache.hadoop.conf.*;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.*;
+import org.apache.hadoop.mapreduce.*;
+
+public class MaxTemp {
+    // Mapper
+    public static class TempMapper extends Mapper<Object, Text, Text, IntWritable> {
+        public void map(Object key, Text value, Context context) 
+            throws IOException, InterruptedException {
+            String[] parts = value.toString().split("\\s+");
+            if(parts.length == 2) {
+                context.write(new Text(parts[0]), new IntWritable(Integer.parseInt(parts[1])));
+            }
+        }
+    }
+
+    // Reducer
+    public static class TempReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
+        public void reduce(Text key, Iterable<IntWritable> values, Context context) 
+            throws IOException, InterruptedException {
+            int max = Integer.MIN_VALUE;
+            for(IntWritable val : values) {
+                max = Math.max(max, val.get());
+            }
+            context.write(key, new IntWritable(max));
+        }
+    }
+
+    // Driver
+    public static void main(String[] args) throws Exception {
+        Configuration conf = new Configuration();
+        Job job = Job.getInstance(conf, "Max Temp");
+        
+        job.setJarByClass(MaxTemp.class);
+        job.setMapperClass(TempMapper.class);
+        job.setReducerClass(TempReducer.class);
+        
+        job.setOutputKeyClass(Text.class);
+        job.setOutputValueClass(IntWritable.class);
+        
+        FileInputFormat.addInputPath(job, new Path(args[0]));
+        FileOutputFormat.setOutputPath(job, new Path(args[1]));
+        
+        System.exit(job.waitForCompletion(true) ? 0 : 1);
+    }
+}
+
+-----------------------------------------------------------
+
+5th 
+
+
+echo -e "Hello World\nHello Hadoop\nGoodbye World" > input.txt
+hdfs dfs -mkdir -p /user/cloudera/wordcount_input
+hdfs dfs -put input.txt /user/cloudera/wordcount_input/
+
+# Compile
+javac -classpath $(hadoop classpath) WordCount.java
+
+# Create jar
+jar -cvf wordcount.jar WordCount*.class
+
+
+hadoop jar wordcount.jar WordCount /user/cloudera/wordcount_input /user/cloudera/wordcount_output
+
+hdfs dfs -cat /user/cloudera/wordcount_output/part-r-00000
+
+
+Goodbye 1
+Hadoop  1
+Hello   2
+World   2
+
+
+import java.io.IOException;
+import java.util.*;
+import org.apache.hadoop.conf.*;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.*;
+import org.apache.hadoop.mapreduce.*;
+
+public class WordCount {
+    
+    // Mapper
+    public static class WCMapper extends Mapper<Object, Text, Text, IntWritable> {
+        private final static IntWritable one = new IntWritable(1);
+        private Text word = new Text();
+        
+        public void map(Object key, Text value, Context context) 
+            throws IOException, InterruptedException {
+            StringTokenizer tokens = new StringTokenizer(value.toString());
+            while(tokens.hasMoreTokens()) {
+                word.set(tokens.nextToken());
+                context.write(word, one);
+            }
+        }
+    }
+    
+    // Reducer
+    public static class WCReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
+        public void reduce(Text key, Iterable<IntWritable> values, Context context) 
+            throws IOException, InterruptedException {
+            int sum = 0;
+            for(IntWritable val : values) {
+                sum += val.get();
+            }
+            context.write(key, new IntWritable(sum));
+        }
+    }
+    
+    // Driver
+    public static void main(String[] args) throws Exception {
+        Configuration conf = new Configuration();
+        Job job = Job.getInstance(conf, "WordCount");
+        
+        job.setJarByClass(WordCount.class);
+        job.setMapperClass(WCMapper.class);
+        job.setReducerClass(WCReducer.class);
+        
+        job.setOutputKeyClass(Text.class);
+        job.setOutputValueClass(IntWritable.class);
+        
+        FileInputFormat.addInputPath(job, new Path(args[0]));
+        FileOutputFormat.setOutputPath(job, new Path(args[1]));
+        
+        System.exit(job.waitForCompletion(true) ? 0 : 1);
+    }
+}
+
+
+------------------------------------------
+
+
+
+
+
+5th 
+
+
+192.168.1.1 GET /index.html
+192.168.1.2 GET /logo.jpg
+192.168.1.3 GET /contact.html
+192.168.1.1 GET /about.html
+192.168.1.2 GET /image.jpg
+
+gedit logs.txt
+
+
+
+hdfs dfs -mkdir /user/cloudera/loginput
+hdfs dfs -put logs.txt /user/cloudera/loginput/
+
+
+
+hdfs dfs -ls /user/cloudera/loginput
+
+
+gedit log_analysis.pig
+
+-- Step 1: Load the log file
+logs = LOAD '/user/cloudera/loginput/logs.txt' USING PigStorage(' ') 
+       AS (ip:chararray, method:chararray, resource:chararray);
+
+-- Step 2: Count hits per IP
+grouped_by_ip = GROUP logs BY ip;
+ip_hits = FOREACH grouped_by_ip GENERATE group AS ip, COUNT(logs) AS hit_count;
+
+-- Step 3: Get top 3 IPs
+ordered_hits = ORDER ip_hits BY hit_count DESC;
+top_ips = LIMIT ordered_hits 3;
+
+-- Step 4: Filter .html requests
+html_requests = FILTER logs BY resource MATCHES '.*\\.html';
+
+-- Step 5: Filter .jpg requests
+jpg_requests = FILTER logs BY resource MATCHES '.*\\.jpg';
+
+-- Step 6: Display results
+DUMP ip_hits;
+DUMP top_ips;
+DUMP html_requests;
+DUMP jpg_requests;
+
+
+pig log_analysis.pig
+
+✅ The output should show:
+
+* Number of hits per IP
+* Top 3 IPs with most hits
+* All `.html` resource requests
+* All `.jpg` resource requests
+
+---
+
+## 🧠 Explanation of Pig Script
+
+| Line                             | Purpose                                            |
+| -------------------------------- | -------------------------------------------------- |
+| `LOAD`                           | Loads log data with 3 fields: IP, method, resource |
+| `GROUP BY ip`                    | Groups data by IP address                          |
+| `COUNT(logs)`                    | Counts how many times each IP appeared             |
+| `ORDER BY`                       | Sorts by hit count                                 |
+| `LIMIT`                          | Shows top N IPs                                    |
+| `FILTER ... MATCHES '.*\\.html'` | Filters resources that end with `.html`            |
+| `FILTER ... MATCHES '.*\\.jpg'`  | Filters resources that end with `.jpg`             |
+| `DUMP`                           | Displays the output on terminal                    |
+
+---
+
+## ✅ Summary of Commands
+
+```bash
+# 1. Create log data
+gedit logs.txt
+
+# 2. Upload to HDFS
+hdfs dfs -mkdir /user/cloudera/loginput
+hdfs dfs -put logs.txt /user/cloudera/loginput/
+
+# 3. Write Pig script
+gedit log_analysis.pig
+
+# 4. Run Pig script
+pig log_analysis.pig
+```
+
+---
+
+### 💡 Optional Extension
+
+Want to add `.png`, `.css`, or `.js` requests?
+
+Just add:
+
+```pig
+png_requests = FILTER logs BY resource MATCHES '.*\\.png';
+css_requests = FILTER logs BY resource MATCHES '.*\\.css';
+```
+
+---
+
+Would you like a **UDF-based version** of this analysis too (for more advanced use)?
+
+
+
+
+
+
+
+
+----------------------------------------------
+
+
+
+
+6th :
+
+Use a **Java UDF in Pig** to classify salaries as `High`, `Medium`, or `Low`.
+
+
+gedit data.txt
+
+
+1,John,2000
+2,Jane,3000
+3,Bob,1500
+4,Alice,2500
+5,Tom,1200
+
+
+
+hdfs dfs -mkdir /user/cloudera/piginput
+hdfs dfs -put data.txt /user/cloudera/piginput/
+
+hdfs dfs -ls /user/cloudera/piginput
+
+gedit SalaryClassifier.java
+
+
+
+import org.apache.pig.EvalFunc;
+import org.apache.pig.data.Tuple;
+
+public class SalaryClassifier extends EvalFunc<String> {
+    public String exec(Tuple input) throws java.io.IOException {
+        if (input == null || input.size() == 0)
+            return null;
+
+        int salary = (Integer) input.get(0);
+
+        if (salary >= 2500)
+            return "High";
+        else if (salary >= 1500)
+            return "Medium";
+        else
+            return "Low";
+    }
+}
+
+
+export PIG_HOME=/usr/lib/pig
+javac -cp $PIG_HOME/pig-0.12.0-cdh5.1.0-core.jar:. SalaryClassifier.java
+jar -cf salaryudf.jar SalaryClassifier.class
+
+ls $PIG_HOME/pig-*.jar //check exist of pig
+
+✅ Confirm that `salaryudf.jar` was created:
+
+```bash
+ls
+```
+
+
+gedit salary_analysis.pig
+
+-- Load data from HDFS
+data = LOAD '/user/cloudera/piginput/data.txt' USING PigStorage(',') AS (id:int, name:chararray, salary:int);
+
+-- Register UDF
+REGISTER 'salaryudf.jar';
+
+-- Define UDF
+DEFINE classifySalary SalaryClassifier();
+
+-- Apply UDF
+classified = FOREACH data GENERATE id, name, salary, classifySalary(salary) AS category;
+
+-- Show result
+DUMP classified;
+
+
+pig salary_analysis.pig
+
+
+You should see output like:
+
+
+(1,John,2000,Medium)
+(2,Jane,3000,High)
+(3,Bob,1500,Medium)
+(4,Alice,2500,High)
+(5,Tom,1200,Low)
+
+| Step              | Command                                           |
+| ----------------- | ------------------------------------------------- |
+| Create input file | `gedit data.txt`                                  |
+| Upload to HDFS    | `hdfs dfs -put data.txt /user/cloudera/piginput/` |
+| Create UDF        | `gedit SalaryClassifier.java`                     |
+| Compile UDF       | `javac -cp $PIG_HOME/pig-...jar:. ...`            |
+| Package JAR       | `jar -cf salaryudf.jar ...`                       |
+| Create Pig script | `gedit salary_analysis.pig`                       |
+| Run Pig script    | `pig salary_analysis.pig`                         |
+
+
+-------------------------------------------
+
+
+
+
+
+
+7th
+
+Here’s a **simple and clear step-by-step guide** with **easy commands** to:
+
+✅ Create a **Managed Table**
+✅ Load **CSV file** from **local storage**
+✅ Run queries
+✅ Drop the table and **confirm deletion from HDFS**
+
+
+1,John,Developer,5000
+2,Jane,Manager,7000
+3,Bob,Analyst,4500
+
+gedit employees.csv
+
+
+### ✅ Step 2: Open Hive Shell
+
+```bash
+hive
+```
+CREATE TABLE employees (
+    id INT,
+    name STRING,
+    role STRING,
+    salary INT
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+STORED AS TEXTFILE;
+
+LOAD DATA LOCAL INPATH '/home/cloudera/employees.csv' INTO TABLE employees;
+
+SELECT * FROM employees;
+
+In a new terminal:
+
+
+hdfs dfs -ls /user/hive/warehouse/employees
+
+hdfs dfs -ls /user/hive/warehouse/employees/
+
+DROP TABLE employees;
+
+---
+
+### ✅ Step 8: Confirm Data is Deleted from HDFS
+
+In terminal:
+
+```bash
+hdfs dfs -ls /user/hive/warehouse/
+```
+
+✅ The `employees` folder should be **gone**, because Hive automatically deletes data of managed tables.
+
+---
+
+## ✅ Summary Table
+
+| Step             | Command                                       |
+| ---------------- | --------------------------------------------- |
+| Create Table     | `CREATE TABLE ...`                            |
+| Load CSV         | `LOAD DATA LOCAL INPATH ...`                  |
+| View Data        | `SELECT * FROM employees;`                    |
+| Check HDFS       | `hdfs dfs -ls /user/hive/warehouse/employees` |
+| Drop Table       | `DROP TABLE employees;`                       |
+| Confirm Deletion | `hdfs dfs -ls /user/hive/warehouse/`          |
+
+
+--------------
+
+
+
+
+
+
+
+8th 
+
+Great! Here's a **complete, easy-to-follow guide** to:
+
+### ✅ Objective:
+
+* Create an **external table** in Hive
+* Load **CSV data** from **local storage**
+* Store in **ORC format** in **custom HDFS location**
+* Query the data
+* Drop the table and confirm **data still exists in HDFS**
+
+---
+
+## 🧪 Example CSV File: `students.csv`
+
+Create this file on Cloudera VM desktop:
+
+```bash
+gedit students.csv
+
+1,John,CS,90
+2,Jane,IT,88
+3,Bob,EC,77
+```
+
+```bash
+hive
+```
+
+CREATE TABLE students_csv (
+    id INT,
+    name STRING,
+    branch STRING,
+    marks INT
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+STORED AS TEXTFILE;
+
+
+ Load CSV Data into Staging Table
+
+LOAD DATA LOCAL INPATH '/home/cloudera/students.csv' INTO TABLE students_csv;
+
+
+
+CREATE EXTERNAL TABLE students_ext (
+    id INT,
+    name STRING,
+    branch STRING,
+    marks INT
+)
+STORED AS ORC
+LOCATION '/user/cloudera/orc_data/students_ext/';
+
+
+Step 4: Insert Data into External Table (Convert Text → ORC)
+
+
+INSERT INTO TABLE students_ext SELECT * FROM students_csv;
+
+ Verify Data in External Table
+
+
+SELECT * FROM students_ext;
+
+Check Data in HDFS Location
+
+hdfs dfs -ls /user/cloudera/orc_data/students_ext
+```
+
+✅ You should see ORC files like:
+
+```
+/user/cloudera/orc_data/students_ext/000000_0
+```
+
+---
+
+### ✅ Step 7: Drop the External Table
+
+```sql
+DROP TABLE students_ext;
+```
+
+Step 8: Confirm Data Still Exists in HDFS
+
+Check again in terminal:
+
+```bash
+hdfs dfs -ls /user/cloudera/orc_data/students_ext
+```
+
+✅ ✅ Data will still be there because it’s an **external table** (Hive only deletes metadata, not actual data).
+
+
+
+| Step                  | Command                                                                 |
+| --------------------- | ----------------------------------------------------------------------- |
+| Create staging table  | `CREATE TABLE students_csv (...)`                                       |
+| Load CSV              | `LOAD DATA LOCAL INPATH '...' INTO TABLE students_csv;`                 |
+| Create external table | `CREATE EXTERNAL TABLE students_ext (...) STORED AS ORC LOCATION '...'` |
+| Insert data           | `INSERT INTO TABLE students_ext SELECT * FROM students_csv;`            |
+| View data             | `SELECT * FROM students_ext;`                                           |
+| Drop table            | `DROP TABLE students_ext;`                                              |
+| Verify HDFS           | `hdfs dfs -ls /user/cloudera/orc_data/students_ext`                     |
+
+
+------------------------------------------------------------------------------------------------------------
+
+
+9 :
+
+Perfect! Here's a **step-by-step guide** to implement **Static Partitioning in Hive** using your `sales_data.csv` file on **Cloudera VM**.
+
+ Objective:
+
+* ✅ Create a **partitioned table** using static partitioning
+* ✅ Load data into **manual partitions**
+* ✅ Verify data is properly stored in partition folders in HDFS
+
+
+
+### ✅ Step 1: Create CSV File
+
+```bash
+gedit sales_data.csv
+```
+
+Paste:
+
+```
+101,Apple,500
+102,Banana,300
+103,Orange,400
+104,Mango,450
+```
+
+
+hdfs dfs -mkdir /user/cloudera/sales_data
+hdfs dfs -put sales_data.csv /user/cloudera/sales_data/
+
+```bash
+hive
+```
+
+---
+
+### ✅ Step 4: Create Non-Partitioned Staging Table (to hold raw CSV)
+
+```sql
+CREATE TABLE sales_staging (
+    id INT,
+    product STRING,
+    amount INT
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+STORED AS TEXTFILE;
+
+LOAD DATA INPATH '/user/cloudera/sales_data/sales_data.csv' INTO TABLE sales_staging;
+```
+
+---
+
+### ✅ Step 6: Create Final Partitioned Table
+
+```sql
+CREATE TABLE sales_partitioned (
+    id INT,
+    product STRING,
+    amount INT
+)
+PARTITIONED BY (region STRING)
+STORED AS TEXTFILE;
+```
+
+📌 Partition column is `region`.
+
+---
+
+### ✅ Step 7: Set Static Partitioning Mode (optional but good practice)
+
+```sql
+SET hive.exec.dynamic.partition.mode=nonstrict;
+```
+
+---
+
+### ✅ Step 8: Manually Load Data into Partition (Static Partitioning)
+
+Example: load data for region = 'South':
+
+```sql
+INSERT INTO TABLE sales_partitioned PARTITION (region='South')
+SELECT * FROM sales_staging;
+```
+
+Repeat with another partition if needed (e.g., 'North'):
+
+```sql
+INSERT INTO TABLE sales_partitioned PARTITION (region='North')
+SELECT * FROM sales_staging;
+```
+
+---
+
+### ✅ Step 9: Query the Partitioned Table
+
+```sql
+SELECT * FROM sales_partitioned;
+```
+
+---
+
+### ✅ Step 10: Verify Partition Folders in HDFS
+
+Exit Hive and run in terminal:
+
+```bash
+hdfs dfs -ls /user/hive/warehouse/sales_partitioned
+```
+
+You should see subdirectories like:
+
+```
+/user/hive/warehouse/sales_partitioned/region=South
+/user/hive/warehouse/sales_partitioned/region=North
+```
+
+---
+
+## ✅ Summary of Commands
+
+| Step                     | Command                                                                   |
+| ------------------------ | ------------------------------------------------------------------------- |
+| Create staging table     | `CREATE TABLE sales_staging (...)`                                        |
+| Load CSV                 | `LOAD DATA INPATH ... INTO TABLE sales_staging;`                          |
+| Create partitioned table | `CREATE TABLE sales_partitioned (...) PARTITIONED BY (region STRING)`     |
+| Load into partition      | `INSERT INTO ... PARTITION (region='South') SELECT * FROM sales_staging;` |
+| Query data               | `SELECT * FROM sales_partitioned;`                                        |
+| Verify in HDFS           | `hdfs dfs -ls /user/hive/warehouse/sales_partitioned`                     |
+
+
+-----------------------------------------------------------------------------------------------------------------
+
+
+
+10 :--
+
+
+Great! Here's a **step-by-step guide** to implement **Bucketing in Hive** using your `students.csv` file on **Cloudera VM**, along with **UDF usage**, **data loading**, and **querying**.
+
+ Objective Recap:
+
+1. ✅ Create a Hive **bucketed table**
+2. ✅ Load **CSV sample data**
+3. ✅ Use a **UDF** in queries
+4. ✅ Inspect **bucketing behavior**
+
+
+gedit students.csv
+
+
+
+1,John,85
+2,Alice,78
+3,Bob,90
+4,Jane,67
+5,Tom,88
+6,Rita,75
+7,Arun,95
+8,Nina,60
+
+
+Step 2: Create and Load a Staging Table (Text Format)
+
+hive
+
+CREATE TABLE students_staging (
+    id INT,
+    name STRING,
+    marks INT
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+STORED AS TEXTFILE;
+
+
+
+LOAD DATA LOCAL INPATH '/home/cloudera/students.csv' INTO TABLE students_staging;
+
+
+SET hive.enforce.bucketing = true;
+
+
+Step 5: Create Bucketed Table
+
+We'll bucket by `id` into 4 buckets:
+
+
+CREATE TABLE students_bucketed (
+    id INT,
+    name STRING,
+    marks INT
+)
+CLUSTERED BY (id) INTO 4 BUCKETS
+STORED AS TEXTFILE;
+
+Step 6: Insert Data into Bucketed Table
+
+INSERT OVERWRITE TABLE students_bucketed SELECT * FROM students_staging;
+
+
+✅ This writes data into 4 files (buckets) based on the `id`.
+
+---
+
+## ✅ Step 7: Check Bucketing in HDFS
+
+Exit Hive and in terminal run:
+
+```bash
+hdfs dfs -ls /user/hive/warehouse/students_bucketed
+```
+
+✅ You should see 4 files like:
+
+```
+000000_0
+000001_0
+000002_0
+000003_0
+```
+
+Each file = one bucket.
+
+---
+
+## ✅ Step 8: Create a Simple Hive UDF (inline using built-in functions)
+
+Let’s use a built-in UDF: `LENGTH(name)` or `UPPER(name)`:
+
+```sql
+SELECT id, UPPER(name) AS upper_name, marks FROM students_bucketed;
+```
+
+Or use `IF(marks > 80, 'Pass', 'Fail')` (like a CASE):
+
+```sql
+SELECT id, name, marks, IF(marks > 80, 'Pass', 'Fail') AS result FROM students_bucketed;
+```
+
+
+## ✅ Summary of Commands
+
+| Task                  | Command                                                                    |
+| --------------------- | -------------------------------------------------------------------------- |
+| Create CSV            | `gedit students.csv`                                                       |
+| Load to staging table | `LOAD DATA LOCAL INPATH ... INTO TABLE students_staging;`                  |
+| Enable bucketing      | `SET hive.enforce.bucketing=true;`                                         |
+| Create bucketed table | `CREATE TABLE students_bucketed (...) CLUSTERED BY (id) INTO 4 BUCKETS`    |
+| Insert into bucketed  | `INSERT OVERWRITE TABLE students_bucketed SELECT * FROM students_staging;` |
+| View bucketed data    | `hdfs dfs -ls /user/hive/warehouse/students_bucketed/`                     |
+| Query with UDF        | `SELECT ..., UPPER(name) ...` or `IF(marks > 80, 'Pass', 'Fail')`          |
+
+
+
+
+---------------------------------------------------------------------------------------------------------
+
+
+
+11 :-
+
+
+
+Here's a **step-by-step guide** to implement an **Apache Flume script for spooling a directory** from **local file system to HDFS** using **Cloudera VM**.
+
+---
+
+## ✅ Objective Summary
+
+| Component                     | Purpose                                      |
+| ----------------------------- | -------------------------------------------- |
+| **Spooling Directory Source** | Watches `/home/cloudera/logs/` for new files |
+| **Memory Channel**            | Buffers the data temporarily                 |
+| **HDFS Sink**                 | Writes data to `/flume/output/` in **HDFS**  |
+
+---
+
+## 📁 Directory Structure
+
+| Local Directory        | Purpose                 |
+| ---------------------- | ----------------------- |
+| `/home/cloudera/logs/` | Spooling folder (local) |
+
+| HDFS Directory   | Purpose             |
+| ---------------- | ------------------- |
+| `/flume/output/` | Destination in HDFS |
+
+---
+
+## 🧾 Step-by-Step Setup
+
+---
+
+### ✅ Step 1: Create Local and HDFS Directories
+
+```bash
+mkdir -p /home/cloudera/logs
+
+hdfs dfs -mkdir -p /flume/output
+```
+
+---
+
+### ✅ Step 2: Create a Sample Log File
+
+```bash
+echo "Sensor reading A1 = 45.2" > /home/cloudera/logs/sensor1.log
+```
+
+---
+
+### ✅ Step 3: Create Flume Configuration File
+
+```bash
+gedit spool-to-hdfs.conf
+```
+
+Paste the following configuration:
+
+```properties
+# Name the components on this agent
+agent1.sources = src1
+agent1.channels = mem1
+agent1.sinks = sink1
+
+# Spooling Directory Source
+agent1.sources.src1.type = spooldir
+agent1.sources.src1.spoolDir = /home/cloudera/logs
+agent1.sources.src1.fileHeader = true
+
+# Memory Channel
+agent1.channels.mem1.type = memory
+agent1.channels.mem1.capacity = 1000
+agent1.channels.mem1.transactionCapacity = 100
+
+# HDFS Sink
+agent1.sinks.sink1.type = hdfs
+agent1.sinks.sink1.hdfs.path = hdfs://localhost:8020/flume/output/
+agent1.sinks.sink1.hdfs.writeFormat = Text
+agent1.sinks.sink1.hdfs.fileType = DataStream
+agent1.sinks.sink1.hdfs.rollInterval = 0
+
+# Bind source and sink to channel
+agent1.sources.src1.channels = mem1
+agent1.sinks.sink1.channel = mem1
+```
+
+---
+
+### ✅ Step 4: Start the Flume Agent
+
+Make sure you're in the same directory as the config file:
+
+```bash
+flume-ng agent \
+--conf /etc/flume-ng/conf \
+--conf-file spool-to-hdfs.conf \
+--name agent1 \
+-Dflume.root.logger=INFO,console
+```
+
+🟢 The Flume agent will now start watching `/home/cloudera/logs/`
+
+---
+
+### ✅ Step 5: Add More Log Files
+
+In another terminal:
+
+```bash
+echo "Sensor reading B2 = 68.9" > /home/cloudera/logs/sensor2.log
+```
+
+Flume will automatically pick it up and move it to HDFS.
+
+---
+
+### ✅ Step 6: Verify in HDFS
+
+```bash
+hdfs dfs -ls /flume/output
+```
+
+You’ll see files like:
+
+```
+FlumeData.1632759231750
+```
+
+To view content:
+
+```bash
+hdfs dfs -cat /flume/output/FlumeData*
+```
+
+---
+
+## ✅ Summary of Commands
+
+| Task                   | Command                                                                  |
+| ---------------------- | ------------------------------------------------------------------------ |
+| Create spool dir       | `mkdir /home/cloudera/logs`                                              |
+| Create HDFS output dir | `hdfs dfs -mkdir /flume/output`                                          |
+| Create config file     | `gedit spool-to-hdfs.conf`                                               |
+| Start Flume agent      | `flume-ng agent --conf ... --conf-file spool-to-hdfs.conf --name agent1` |
+| Verify in HDFS         | `hdfs dfs -ls /flume/output`                                             |
+
