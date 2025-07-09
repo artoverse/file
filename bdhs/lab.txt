@@ -322,6 +322,8 @@ Hadoop  1
 Hello   2
 World   2
 
+
+
 import java.io.IOException;
 import java.util.StringTokenizer;
 
@@ -383,6 +385,7 @@ public class WordCount {
     System.exit(job.waitForCompletion(true) ? 0 : 1);
   }
 }
+
 
 
 ------------------------------------------
@@ -661,6 +664,8 @@ hdfs dfs -ls /user/hive/warehouse/employees
 hdfs dfs -ls /user/hive/warehouse/employees/
 
 DROP TABLE employees;
+
+
 
 ---
 
@@ -1218,3 +1223,60 @@ hdfs dfs -cat /flume/output/FlumeData*
 | Start Flume agent      | `flume-ng agent --conf ... --conf-file spool-to-hdfs.conf --name agent1` |
 | Verify in HDFS         | `hdfs dfs -ls /flume/output`                                             |
 
+
+
+Here are the definitions for the requested big data terms:
+
+### Data Storage & File Systems
+
+**Hadoop Distributed File System (HDFS)** is the primary storage system used by Hadoop. It's a distributed file system designed to run on commodity hardware. HDFS is highly fault-tolerant and is designed to store very large data sets. Data is broken down into blocks and distributed across multiple nodes in a cluster, and these blocks are replicated to ensure data availability in case of node failure.
+
+---
+
+### Data Processing Frameworks
+
+**Hadoop** (also known as Apache Hadoop) is an open-source framework that allows for the distributed processing of large data sets across clusters of computers. It consists of four main modules: HDFS for storage, YARN for resource management, MapReduce for processing, and Hadoop Common, which provides common utilities.
+
+**MapReduce** is a programming model and processing engine for processing large data sets in a distributed, parallel fashion. It works in two main phases: the **Map** phase, which processes and transforms input data into key-value pairs, and the **Reduce** phase, which aggregates the data from the map phase to produce the final result.
+
+**Apache Spark** is a fast and general-purpose cluster computing system. It provides high-level APIs in Java, Scala, Python, and R, and an optimized engine that supports general execution graphs. A key feature of Spark is its ability to perform in-memory computing, which makes it significantly faster than MapReduce for many applications. It can be used for batch processing, interactive queries, streaming, machine learning, and graph processing.
+
+---
+
+### Core Data Structures
+
+**Resilient Distributed Dataset (RDD)** is the fundamental data structure in Apache Spark. It's an immutable, fault-tolerant, distributed collection of objects that can be processed in parallel. RDDs can be created from a Hadoop data source (like HDFS), or by transforming an existing RDD.
+
+---
+
+### Data Ingestion & Movement
+
+**Apache Sqoop** is a tool designed to efficiently transfer bulk data between Apache Hadoop and structured datastores such as relational databases. You can use Sqoop to import data from a relational database into HDFS and to export data from HDFS to a relational database.
+
+**Apache Flume** is a distributed, reliable, and available service for efficiently collecting, aggregating, and moving large amounts of log data. It has a simple and flexible architecture based on streaming data flows. Flume is commonly used to ingest streaming data from various sources into HDFS.
+
+---
+
+### Data Warehousing & Querying
+
+**Apache Hive** is a data warehouse software project built on top of Apache Hadoop for providing data summarization, query, and analysis. It provides an SQL-like interface called **HiveQL** to query data stored in various databases and file systems that integrate with Hadoop.
+
+**HiveQL (HQL)** is the query language for Apache Hive. It has a syntax that is very similar to standard SQL, making it familiar to users with a background in relational databases. HiveQL queries are converted into MapReduce, Tez, or Spark jobs that run on the Hadoop cluster.
+
+**Managed Tables vs. Local/External Tables** in Hive refer to how the data is managed:
+* **Managed (or Internal) Tables:** When you create a managed table, Hive manages both the metadata and the data in HDFS. If you drop a managed table, both the metadata and the data are deleted.
+* **External Tables:** When you create an external table, Hive only manages the metadata about the table. The actual data is stored in a location outside of the Hive warehouse directory. If you drop an external table, only the metadata is deleted, and the data remains untouched.
+
+---
+
+### Data Analysis & Scripting
+
+**Apache Pig** is a high-level platform for creating programs that run on Apache Hadoop. The language for this platform is called **Pig Latin**. Pig is designed to make it easier to write complex data analysis programs. Pig Latin scripts are converted into MapReduce jobs by the Pig interpreter.
+
+---
+
+### Data Serialization & File Formats
+
+**Optimized Row Columnar (ORC)** is a columnar storage file format that provides a highly efficient way to store and access Hive data. It improves performance by storing data in a columnar format, which allows for better compression and the ability to read only the columns required for a query, a technique known as projection pushdown.
+
+**Apache Avro** is a data serialization system. It provides rich data structures and a compact, fast, binary data format. A key feature of Avro is that its schema is stored in JSON format, making it easy to read and interpret. Avro is often used in Hadoop to serialize data that is passed between nodes or written to HDFS.
